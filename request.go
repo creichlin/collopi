@@ -12,13 +12,15 @@ import (
 )
 
 type Request struct {
-	client      *Client
-	method      string
-	path        string
-	queryValues *url.Values
-	body        interface{}
-	target      interface{}
-	acceptStati map[int]bool
+	client       *Client
+	method       string
+	path         string
+	queryValues  *url.Values
+	body         interface{}
+	target       interface{}
+	acceptStati  map[int]bool
+	authUser     string
+	authPassword string
 }
 
 func newRequest(client *Client) *Request {
@@ -58,6 +60,12 @@ func (cr *Request) Body(body interface{}) *Request {
 
 func (cr *Request) Accept(code int) *Request {
 	cr.acceptStati[code] = true
+	return cr
+}
+
+func (cr *Request) BasicAuth(user string, password string) *Request {
+	cr.authUser = user
+	cr.authPassword = password
 	return cr
 }
 
@@ -101,15 +109,19 @@ func (cr *Request) buildBody() (io.Reader, error) {
 	return reader, nil
 }
 
-func (cr *Request) Do() error {
+func (cr *Request) Do() (int, error) {
 	body, err := cr.buildBody()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	request, err := http.NewRequest(cr.method, cr.client.url+cr.path, body)
 	if err != nil {
-		return err
+		return 0, err
+	}
+
+	if cr.authUser != "" && cr.authPassword != "" {
+		request.SetBasicAuth(cr.authUser, cr.authPassword)
 	}
 
 	if cr.target != nil {
@@ -122,7 +134,7 @@ func (cr *Request) Do() error {
 	resp, err := cr.client.http.Do(request)
 
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if resp != nil {
@@ -133,12 +145,15 @@ func (cr *Request) Do() error {
 		response := ""
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("Response error is %v, failed to fetch body %v", resp.StatusCode, err)
+			return 0, fmt.Errorf("Response status is %v, failed to fetch body %v", resp.StatusCode, err)
 		}
 		response = string(body)
-		return fmt.Errorf("Response error is %v for request %v %v, %v",
+		return 0, fmt.Errorf("Response error is %v for request %v %v, %v",
 			resp.StatusCode, cr.method, cr.client.url+cr.path, response)
 	}
 	err = cr.readToTarget(resp.Body, resp.StatusCode)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return resp.StatusCode, nil
 }
