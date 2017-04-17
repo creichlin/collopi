@@ -133,21 +133,20 @@ func (cr *Request) Do() (int, error) {
 	request.URL.RawQuery = cr.queryValues.Encode()
 	resp, err := cr.client.http.Do(request)
 
+	if resp != nil {
+		defer resp.Body.Close() // nolint: errcheck
+	}
+
 	if err != nil {
 		return 0, err
 	}
 
-	if resp != nil {
-		defer resp.Body.Close()
-	}
-
 	if !cr.acceptStati[resp.StatusCode] {
-		response := ""
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return 0, fmt.Errorf("Response status is %v, failed to fetch body %v", resp.StatusCode, err)
+		body, err2 := ioutil.ReadAll(resp.Body)
+		if err2 != nil {
+			return 0, fmt.Errorf("Response status is %v, failed to fetch body %v", resp.StatusCode, err2)
 		}
-		response = string(body)
+		response := string(body)
 		return 0, fmt.Errorf("Response error is %v for request %v %v, %v",
 			resp.StatusCode, cr.method, cr.client.url+cr.path, response)
 	}
