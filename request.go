@@ -23,6 +23,7 @@ type Request struct {
 	acceptStati  map[int]bool
 	authUser     string
 	authPassword string
+	headers      map[string]string
 }
 
 func newRequest(client *Client) *Request {
@@ -30,12 +31,19 @@ func newRequest(client *Client) *Request {
 		client:      client,
 		queryValues: &url.Values{},
 		acceptStati: map[int]bool{200: true},
+		headers:     map[string]string{},
 	}
 }
 
 // Method sets the method verb used for the request
 func (cr *Request) Method(method string) *Request {
 	cr.method = method
+	return cr
+}
+
+// Authorization sets the Authorization header
+func (cr *Request) Authorization(value string) *Request {
+	cr.headers["Authorization"] = value
 	return cr
 }
 
@@ -165,6 +173,10 @@ func (cr *Request) buildRequest(body io.Reader) (*http.Request, error) {
 
 	if cr.authUser != "" && cr.authPassword != "" {
 		request.SetBasicAuth(cr.authUser, cr.authPassword)
+	}
+
+	for key, val := range cr.headers {
+		request.Header.Add(key, val)
 	}
 
 	if cr.target != nil {
