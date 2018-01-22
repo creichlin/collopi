@@ -10,10 +10,16 @@ type Client struct {
 
 // NewClient creates a client that will access urls
 // from given base url
-func NewClient(url string) *Client {
+func NewClient(url string, transport ...*http.Transport) *Client {
 	client := &Client{
 		http: &http.Client{},
 		url:  url,
+	}
+	if len(transport) > 1 {
+		panic("maximum one transport allowed")
+	}
+	if len(transport) == 1 {
+		client.http.Transport = transport[0]
 	}
 	return client
 }
