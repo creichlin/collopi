@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -94,16 +95,16 @@ func (cr *Request) Target(target interface{}) *Request {
 	return cr
 }
 
-func (cr *Request) readToTarget(reader io.Reader, code int) error {
+func (cr *Request) readToTarget(reader io.Reader, code int) (interface{}, error) {
 	if cr.target == nil {
-		return nil
+		return nil, nil
 	}
 	if code == http.StatusNotFound {
-		return nil
+		return nil, nil
 	}
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = json.Unmarshal(bytes, cr.target)
@@ -112,9 +113,14 @@ func (cr *Request) readToTarget(reader io.Reader, code int) error {
 		if len(str) > 100 {
 			str = str[:100] + "..."
 		}
-		return fmt.Errorf("Could not parse response as json %v (%v) int %Tv", err, str, cr.target)
+		return nil, fmt.Errorf("Could not parse response as json %v (%v) int %Tv", err, str, cr.target)
 	}
-	return nil
+	t2 := interface{}(nil)
+	err = json.Unmarshal(bytes, &t2)
+	if err != nil {
+		panic(err)
+	}
+	return t2, nil
 }
 
 func (cr *Request) buildBody() (io.Reader, error) {
@@ -131,6 +137,10 @@ func (cr *Request) buildBody() (io.Reader, error) {
 
 // Do executes the request
 func (cr *Request) Do() (int, error) {
+	l := &aLog{
+		Service: cr.client.debugID,
+		HTTP:    httpLog{},
+	}
 	body, err := cr.buildBody()
 	if err != nil {
 		return 0, err
@@ -141,12 +151,28 @@ func (cr *Request) Do() (int, error) {
 		return 0, err
 	}
 
+	if cr.client.debugID != "" {
+		l.HTTP.Request = httpRequest{
+			Method:  cr.method,
+			URL:     cr.client.url + cr.path,
+			Body:    cr.body,
+			Headers: request.Header,
+		}
+	}
+
 	resp, err := cr.client.http.Do(request)
 	if resp != nil {
 		defer resp.Body.Close() // nolint: errcheck
 	}
 	if err != nil {
 		return 0, err
+	}
+
+	if cr.client.debugID != "" {
+		l.HTTP.Response = httpResponse{
+			Status:  resp.StatusCode,
+			Headers: resp.Header,
+		}
 	}
 
 	if !cr.acceptStati[resp.StatusCode] {
@@ -158,11 +184,43 @@ func (cr *Request) Do() (int, error) {
 		return 0, fmt.Errorf("Response error is %v for request %v %v, %v",
 			resp.StatusCode, cr.method, cr.client.url+cr.path, response)
 	}
-	err = cr.readToTarget(resp.Body, resp.StatusCode)
+	data, err := cr.readToTarget(resp.Body, resp.StatusCode)
 	if err != nil {
 		return 0, err
 	}
+	if cr.client.debugID != "" {
+		l.HTTP.Response.Body = data
+		dat, err := json.Marshal(l)
+		if err != nil {
+			log.Println("failed to log", err)
+		} else {
+			fmt.Println(string(dat))
+		}
+	}
 	return resp.StatusCode, nil
+}
+
+type httpRequest struct {
+	Method  string      `json:"method"`
+	URL     string      `json:"url"`
+	Body    interface{} `json:"body"`
+	Headers interface{} `json:"headers"`
+}
+
+type httpResponse struct {
+	Status  int         `json:"status"`
+	Body    interface{} `json:"body"`
+	Headers interface{} `json:"headers"`
+}
+
+type httpLog struct {
+	Request  httpRequest  `json:"request"`
+	Response httpResponse `json:"response"`
+}
+
+type aLog struct {
+	Service string  `json:"service"`
+	HTTP    httpLog `json:"http"`
 }
 
 func (cr *Request) buildRequest(body io.Reader) (*http.Request, error) {
