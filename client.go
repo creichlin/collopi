@@ -4,8 +4,9 @@ import "net/http"
 
 // Client contains the http client and the base url
 type Client struct {
-	http *http.Client
-	url  string
+	http    *http.Client
+	url     string
+	debugID string
 }
 
 // NewClient creates a client that will access urls
@@ -22,6 +23,12 @@ func NewClient(url string, transport ...*http.Transport) *Client {
 		client.http.Transport = transport[0]
 	}
 	return client
+}
+
+// Debug will enable debugging for this client, identifying it with given
+// clientID
+func (c *Client) Debug(debugID string) {
+	c.debugID = debugID
 }
 
 // GET creates a GET request
