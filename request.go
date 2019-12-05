@@ -48,6 +48,12 @@ func (cr *Request) Authorization(value string) *Request {
 	return cr
 }
 
+// Header adds a custom header
+func (cr *Request) Header(name, value string) *Request {
+	cr.headers[name] = value
+	return cr
+}
+
 // Path will set the path of the request, the parts will be merged using / as separator.
 func (cr *Request) Path(paths ...string) *Request {
 	if len(paths) == 0 {
